@@ -9,7 +9,6 @@
 		"declaration": true,
 		"strict": true,
 		"alwaysStrict": false,
-		"noImplicitUseStrict": true,
 		"resolveJsonModule": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
