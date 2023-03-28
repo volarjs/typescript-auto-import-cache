@@ -5,7 +5,12 @@ import type { LanguageService, LanguageServiceHost } from 'typescript/lib/tsserv
 // only create the once for all hosts, as this will improve performance as the internal cache can be reused
 let projectService: ProjectService;
 
-export default function (ts: typeof import('typescript/lib/tsserverlibrary'), host: LanguageServiceHost, service: LanguageService, rootDirectory: string) {
+export default function (
+	ts: typeof import('typescript/lib/tsserverlibrary'),
+	host: LanguageServiceHost,
+	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined, 
+	rootDirectory: string
+): LanguageService | undefined {
 	// will need to make this the workspace directory
 	if (!projectService) {
 		projectService = createProjectService(
@@ -20,25 +25,18 @@ export default function (ts: typeof import('typescript/lib/tsserverlibrary'), ho
 	const project = createProject(
 		ts,
 		host,
-		projectService,
-		host.getScriptFileNames(),
-		host.getCurrentDirectory(),
-		host.getCompilationSettings(),
-		service.getProgram(),
+		createLanguageService,
+		{
+			projectService,
+			rootNames: host.getScriptFileNames(),
+			currentDirectory: host.getCurrentDirectory(),
+			compilerOptions: host.getCompilationSettings(),
+		}
 	);
-	project.getPackageJsonAutoImportProvider();
 
-	// @ts-expect-error
-	host.getPackageJsonsVisibleToFile = (fileName: string, rootDir: string | undefined) => project.getPackageJsonsVisibleToFile(fileName, rootDir);
-	// @ts-expect-error
-	host.includePackageJsonAutoImports = () => project.includePackageJsonAutoImports();
-	// @ts-expect-error
-	host.getCachedExportInfoMap = () => project.getCachedExportInfoMap();
-	// @ts-expect-error
-	host.getModuleSpecifierCache = () => project.getModuleSpecifierCache();
-	// @ts-expect-error
-	host.getPackageJsonsForAutoImport = (rootDir: string | undefined) => project.getPackageJsonsForAutoImport(rootDir);
-	// @ts-expect-error
-	host.getPackageJsonAutoImportProvider = () => project.getPackageJsonAutoImportProvider();
-	host.getScriptFileNames = () => project.getScriptFileNames();
+	// Immediatly invoke so the language service provider is setup
+	// this preinitialises getting auto imports in IDE
+	project.getPackageJsonAutoImportProvider()
+
+	return project.languageService
 }

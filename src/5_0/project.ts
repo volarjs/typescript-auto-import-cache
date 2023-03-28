@@ -5,217 +5,47 @@ import type {
 	Program,
 	ModuleResolutionHost,
 	PerformanceEvent,
+    LanguageService,
 } from 'typescript/lib/tsserverlibrary';
 import type { PackageJsonInfo, ProjectPackageJsonInfo } from './packageJsonCache';
 import { ProjectService, PackageJsonAutoImportPreference } from './projectService';
 import { createModuleSpecifierCache } from './moduleSpecifierCache';
 
-export type Project = ReturnType<typeof createProject>;
+export type Project = ReturnType<typeof createBaseProject>;
+type ProjectOptions = { projectService: ProjectService, compilerOptions: CompilerOptions, currentDirectory: string, rootNames: string[] }
 
 type SymlinkCache = any;
 
 export function createProject(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
 	host: LanguageServiceHost,
-	projectService: ProjectService,
-	rootNames: string[],
-	currentDirectory: string,
-	compilerOptions: CompilerOptions,
-	program: Program | undefined,
+	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined,
+	options: ProjectOptions,
+	override: Partial<Project> = {}
 ) {
-	const {
-		combinePaths,
-		inferredTypesContainingFile,
-		createSymlinkCache,
-		toPath,
-		createCacheableExportInfoMap,
-		timestamp,
-		isInsideNodeModules,
-		LanguageServiceMode
-	} = ts as any;
-	const AutoImportProviderProject = createAutoImportProviderProject(ts, host);
-
-	let projectVersion = host.getProjectVersion?.()
-	function updateProjectIfDirty(project: any) {
-		const newVersion = host.getProjectVersion?.()
-		if (projectVersion === newVersion) return
-		projectVersion = newVersion
-		project.hostProject?.clearCachedExportInfoMap()
-	}
-		
-	return {
-		projectService,
-
-		getCanonicalFileName: projectService.toCanonicalFileName,
-
-		exportMapCache: undefined as undefined | { clear(): void },
-		getCachedExportInfoMap() {
-			return (this.exportMapCache ||= createCacheableExportInfoMap(this));
-		},
-		clearCachedExportInfoMap() {
-			this.exportMapCache?.clear();
-		},
-
-		moduleSpecifierCache: createModuleSpecifierCache(),
-		getModuleSpecifierCache() {
-			return this.moduleSpecifierCache;
-		},
-
-		compilerOptions,
-		getCompilationSettings() {
-			return this.compilerOptions;
-		},
-		getCompilerOptions() {
-			return this.compilerOptions;
-		},
-
-		program,
-		getCurrentProgram(): Program | undefined {
-			return this.program;
-		},
-
-		currentDirectory: projectService.getNormalizedAbsolutePath(currentDirectory || ''),
-		getCurrentDirectory(): string {
-			return this.currentDirectory;
-		},
-
-		symlinks: undefined as SymlinkCache | undefined,
-		getSymlinkCache(): SymlinkCache {
-			if (!this.symlinks) {
-				this.symlinks = createSymlinkCache(this.getCurrentDirectory(), this.getCanonicalFileName);
+	const project = createBaseProject(ts, host, createLanguageService, options, override)
+	const languageService = createLanguageService(
+		new Proxy(host, {
+			get(target, key: keyof LanguageServiceHost) {
+				return key in project ? (project as any)[key] : target[key]
+			},
+			set(_target, key, value) {
+				(project as any)[key] = value
+				return true
 			}
-			if (this.program && !this.symlinks.hasProcessedResolutions()) {
-				this.symlinks.setSymlinksFromResolutions(
-					this.program.getSourceFiles(),
-					// @ts-expect-error
-					this.program.getAutomaticTypeDirectiveResolutions(),
-				);
-			}
-			return this.symlinks;
-		},
-
-		packageJsonsForAutoImport: undefined as Set<string> | undefined,
-		getPackageJsonsForAutoImport(rootDir?: string): readonly ProjectPackageJsonInfo[] {
-			const packageJsons = this.getPackageJsonsVisibleToFile(
-				combinePaths(this.currentDirectory, inferredTypesContainingFile),
-				rootDir,
-			);
-			this.packageJsonsForAutoImport = new Set(packageJsons.map((p) => p.fileName));
-			return packageJsons;
-		},
-		getPackageJsonsVisibleToFile(fileName: string, rootDir?: string): readonly ProjectPackageJsonInfo[] {
-			return this.projectService.getPackageJsonsVisibleToFile(fileName, rootDir);
-		},
-
-		rootNames,
-		getScriptFileNames() {
-			return this.rootNames;
-		},
-		getSourceFile(path: Path) {
-			if (!this.program) {
-				return undefined;
-			}
-			return this.program.getSourceFileByPath(path);
-		},
-		isEmpty() {
-			return !this.rootNames.length;
-		},
-
-		getModuleResolutionHostForAutoImportProvider(): ModuleResolutionHost {
-			if (this.program) {
-				return {
-					// @ts-expect-error
-					fileExists: this.program.fileExists,
-					// @ts-expect-error
-					directoryExists: this.program.directoryExists,
-					realpath: undefined,
-					getCurrentDirectory: this.getCurrentDirectory.bind(this),
-					readFile: this.projectService.host.readFile.bind(this.projectService.host),
-					getDirectories: this.projectService.host.getDirectories.bind(this.projectService.host),
-					// trace: this.projectService.host.trace?.bind(this.projectService.host),
-					trace: () => {},
-					// @ts-expect-error
-					useCaseSensitiveFileNames: this.program.useCaseSensitiveFileNames(),
-				};
-			}
-			return this.projectService.host;
-		},
-
-		autoImportProviderHost: undefined as
-			| undefined
-			| false
-			| { getCurrentProgram(): Program | undefined; isEmpty(): boolean; close(): void },
-		getPackageJsonAutoImportProvider(): Program | undefined {
-			if (this.autoImportProviderHost === false) {
-				return undefined;
-			}
-
-			if (this.projectService.serverMode !== LanguageServiceMode.Semantic) {
-				this.autoImportProviderHost = false;
-				return undefined;
-			}
-
-			if (this.autoImportProviderHost) {
-				updateProjectIfDirty(this.autoImportProviderHost);
-				if (this.autoImportProviderHost.isEmpty()) {
-					this.autoImportProviderHost.close();
-					this.autoImportProviderHost = undefined;
-					return undefined;
-				}
-				return this.autoImportProviderHost.getCurrentProgram();
-			}
-
-			const dependencySelection = projectService.includePackageJsonAutoImports();
-			if (dependencySelection) {
-				// tracing?.push(tracing.Phase.Session, "getPackageJsonAutoImportProvider");
-				const start = timestamp();
-				this.autoImportProviderHost = AutoImportProviderProject.create(
-					dependencySelection,
-					this,
-					this.getModuleResolutionHostForAutoImportProvider(),
-				);
-				if (this.autoImportProviderHost) {
-					updateProjectIfDirty(this.autoImportProviderHost);
-					this.sendPerformanceEvent('CreatePackageJsonAutoImportProvider', timestamp() - start);
-					// tracing?.pop();
-					return this.autoImportProviderHost.getCurrentProgram();
-				}
-				// tracing?.pop();
-			}
-		},
-
-		languageServiceEnabled: true,
-		includePackageJsonAutoImports(): PackageJsonAutoImportPreference {
-			if (
-				this.projectService.includePackageJsonAutoImports() === PackageJsonAutoImportPreference.Off ||
-				!this.languageServiceEnabled ||
-				isInsideNodeModules(this.currentDirectory) /* ||
-				!this.isDefaultProjectForOpenFiles()*/
-			) {
-				return PackageJsonAutoImportPreference.Off;
-			}
-			return this.projectService.includePackageJsonAutoImports();
-		},
-
-		close() {},
-		log(_message: string) {},
-		sendPerformanceEvent(_kind: PerformanceEvent['kind'], _durationMs: number) {},
-
-		toPath(fileName: string) {
-			return toPath(fileName, this.currentDirectory, this.projectService.toCanonicalFileName);
-		},
-
-		getCachedDirectoryStructureHost(): undefined {
-			return undefined!; // TODO: GH#18217
-		},
-
-		getGlobalTypingsCacheLocation() {
-			return undefined;
-		},
-	};
+		})
+	)
+	project.languageService = languageService
+	project.languageServiceEnabled = !!languageService
+	project.program = languageService?.getProgram()
+	return project
 }
 
-function createAutoImportProviderProject(tsBase: typeof import('typescript/lib/tsserverlibrary'), host: LanguageServiceHost) {
+function createAutoImportProviderProject(
+	tsBase: typeof import('typescript/lib/tsserverlibrary'), 
+	host: LanguageServiceHost, 
+	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined
+) {
 	const ts = tsBase as any
 	const {
 		combinePaths,
@@ -398,53 +228,269 @@ function createAutoImportProviderProject(tsBase: typeof import('typescript/lib/t
 				return undefined;
 			}
 
-			return {
-				hostProject,
-				...createProject(
-					tsBase,
-					host,
-					hostProject.projectService,
+			return createProject(
+				tsBase,
+				host,
+				createLanguageService,
+				{
+					projectService: hostProject.projectService,
 					rootNames,
-					hostProject.currentDirectory,
+					currentDirectory: hostProject.currentDirectory,
 					compilerOptions,
-					tsBase.createProgram({
-						host: host.getCompilerHost?.(),
-						rootNames,
-						options: compilerOptions,
-						oldProgram: hostProject.program,
-					}),
-				),
-
-				getLanguageService(): never {
-					throw new Error(
-						'AutoImportProviderProject language service should never be used. To get the program, use `project.getCurrentProgram()`.',
-					);
 				},
+				{
+					hostProject,
+					getLanguageService(): never {
+						throw new Error(
+							'AutoImportProviderProject language service should never be used. To get the program, use `project.getCurrentProgram()`.',
+						);
+					},
+	
+					/** @internal */
+					onAutoImportProviderSettingsChanged(): never {
+						throw new Error('AutoImportProviderProject is an auto import provider; use `markAsDirty()` instead.');
+					},
+	
+					/** @internal */
+					onPackageJsonChange(): never {
+						throw new Error("package.json changes should be notified on an AutoImportProvider's host project");
+					},
+	
+					getModuleResolutionHostForAutoImportProvider(): never {
+						throw new Error(
+							'AutoImportProviderProject cannot provide its own host; use `hostProject.getModuleResolutionHostForAutomImportProvider()` instead.',
+						);
+					},
+	
+					includePackageJsonAutoImports() {
+						return PackageJsonAutoImportPreference.Off;
+					},
+	
+					getSymlinkCache() {
+						return hostProject.getSymlinkCache();
+					},
+				}
+			)
+		}
+	};
+}
 
-				/** @internal */
-				onAutoImportProviderSettingsChanged(): never {
-					throw new Error('AutoImportProviderProject is an auto import provider; use `markAsDirty()` instead.');
-				},
+function createBaseProject(
+	ts: typeof import('typescript/lib/tsserverlibrary'),
+	host: LanguageServiceHost,
+	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined,
+	options: ProjectOptions,
+	override: Record<string, unknown> = {}
+) {
+	const {
+		combinePaths,
+		inferredTypesContainingFile,
+		createSymlinkCache,
+		toPath,
+		createCacheableExportInfoMap,
+		timestamp,
+		isInsideNodeModules,
+		LanguageServiceMode
+	} = ts as any;
+	const AutoImportProviderProject = createAutoImportProviderProject(ts, host, createLanguageService);
 
-				/** @internal */
-				onPackageJsonChange(): never {
-					throw new Error("package.json changes should be notified on an AutoImportProvider's host project");
-				},
+	const { projectService, compilerOptions, currentDirectory, rootNames } = options
 
-				getModuleResolutionHostForAutoImportProvider(): never {
-					throw new Error(
-						'AutoImportProviderProject cannot provide its own host; use `hostProject.getModuleResolutionHostForAutomImportProvider()` instead.',
-					);
-				},
+	let projectVersion = host.getProjectVersion?.()
+	function updateProjectIfDirty(project: any) {
+		const newVersion = host.getProjectVersion?.()
+		if (projectVersion === newVersion) return
+		projectVersion = newVersion
+		project.hostProject.clearCachedExportInfoMap()
+		project.clearCachedExportInfoMap()
+	}
+		
+	return {
+		hostProject: undefined as any,
 
-				includePackageJsonAutoImports() {
-					return PackageJsonAutoImportPreference.Off;
-				},
+		projectService,
 
-				getSymlinkCache() {
-					return this.hostProject.getSymlinkCache();
-				},
-			};
+		getCanonicalFileName: projectService.toCanonicalFileName,
+
+		exportMapCache: undefined as undefined | { clear(): void },
+		getCachedExportInfoMap() {
+			return (this.exportMapCache ||= createCacheableExportInfoMap(this));
 		},
+		clearCachedExportInfoMap() {
+			this.exportMapCache?.clear();
+		},
+
+		moduleSpecifierCache: createModuleSpecifierCache(),
+		getModuleSpecifierCache() {
+			return this.moduleSpecifierCache;
+		},
+
+		compilerOptions,
+		getCompilationSettings() {
+			return this.compilerOptions;
+		},
+		getCompilerOptions() {
+			return this.compilerOptions;
+		},
+
+		program: undefined as undefined | Program,
+		getCurrentProgram(): Program | undefined {
+			return this.program;
+		},
+
+		currentDirectory: projectService.getNormalizedAbsolutePath(currentDirectory || ''),
+		getCurrentDirectory(): string {
+			return this.currentDirectory;
+		},
+
+		symlinks: undefined as SymlinkCache | undefined,
+		getSymlinkCache(): SymlinkCache {
+			if (!this.symlinks) {
+				this.symlinks = createSymlinkCache(this.getCurrentDirectory(), this.getCanonicalFileName);
+			}
+
+			if (this.program && !this.symlinks.hasProcessedResolutions()) {
+				this.symlinks.setSymlinksFromResolutions(
+					this.program.getSourceFiles(),
+					// @ts-expect-error
+					this.program.getAutomaticTypeDirectiveResolutions(),
+				);
+			}
+			return this.symlinks;
+		},
+
+		packageJsonsForAutoImport: undefined as Set<string> | undefined,
+		getPackageJsonsForAutoImport(rootDir?: string): readonly ProjectPackageJsonInfo[] {
+			const packageJsons = this.getPackageJsonsVisibleToFile(
+				combinePaths(this.currentDirectory, inferredTypesContainingFile),
+				rootDir,
+			);
+			this.packageJsonsForAutoImport = new Set(packageJsons.map((p) => p.fileName));
+			return packageJsons;
+		},
+		getPackageJsonsVisibleToFile(fileName: string, rootDir?: string): readonly ProjectPackageJsonInfo[] {
+			return this.projectService.getPackageJsonsVisibleToFile(fileName, rootDir);
+		},
+
+		rootNames,
+		getScriptFileNames() {
+			return this.rootNames;
+		},
+		getSourceFile(path: Path) {
+			if (!this.program) {
+				return undefined;
+			}
+			return this.program.getSourceFileByPath(path);
+		},
+		isEmpty() {
+			return !this.rootNames.length;
+		},
+
+		getModuleResolutionHostForAutoImportProvider(): ModuleResolutionHost {
+			if (this.program) {
+				return {
+					// @ts-expect-error
+					fileExists: this.program.fileExists,
+					// @ts-expect-error
+					directoryExists: this.program.directoryExists,
+					realpath: undefined,
+					getCurrentDirectory: this.getCurrentDirectory.bind(this),
+					readFile: this.projectService.host.readFile.bind(this.projectService.host),
+					getDirectories: this.projectService.host.getDirectories.bind(this.projectService.host),
+					// trace: this.projectService.host.trace?.bind(this.projectService.host),
+					trace: () => {},
+					// @ts-expect-error
+					useCaseSensitiveFileNames: this.program.useCaseSensitiveFileNames(),
+				};
+			}
+			return this.projectService.host;
+		},
+
+		autoImportProviderHost: undefined as
+			| undefined
+			| false
+			| { getCurrentProgram(): Program | undefined; isEmpty(): boolean; close(): void },
+		getPackageJsonAutoImportProvider(): Program | undefined {
+			if (this.autoImportProviderHost === false) {
+				return undefined;
+			}
+
+			if (this.projectService.serverMode !== LanguageServiceMode.Semantic) {
+				this.autoImportProviderHost = false;
+				return undefined;
+			}
+
+			if (this.autoImportProviderHost) {
+				updateProjectIfDirty(this.autoImportProviderHost);
+				if (this.autoImportProviderHost.isEmpty()) {
+					this.autoImportProviderHost.close();
+					this.autoImportProviderHost = undefined;
+					return undefined;
+				}
+				return this.autoImportProviderHost.getCurrentProgram();
+			}
+
+			const dependencySelection = projectService.includePackageJsonAutoImports();
+			if (dependencySelection) {
+				// tracing?.push(tracing.Phase.Session, "getPackageJsonAutoImportProvider");
+				const start = timestamp();
+				this.autoImportProviderHost = AutoImportProviderProject.create(
+					dependencySelection,
+					this,
+					this.getModuleResolutionHostForAutoImportProvider(),
+				);
+				if (this.autoImportProviderHost) {
+					updateProjectIfDirty(this.autoImportProviderHost);
+					this.sendPerformanceEvent('CreatePackageJsonAutoImportProvider', timestamp() - start);
+					// tracing?.pop();
+					return this.autoImportProviderHost.getCurrentProgram();
+				}
+				// tracing?.pop();
+			}
+		},
+
+		languageServiceEnabled: true,
+		languageService: undefined as undefined | LanguageService,
+		getLanguageService() {
+			return this.languageService
+		},
+
+		includePackageJsonAutoImports(): PackageJsonAutoImportPreference {
+			if (
+				this.projectService.includePackageJsonAutoImports() === PackageJsonAutoImportPreference.Off ||
+				!this.languageServiceEnabled ||
+				isInsideNodeModules(this.currentDirectory) /* ||
+				!this.isDefaultProjectForOpenFiles()*/
+			) {
+				return PackageJsonAutoImportPreference.Off;
+			}
+			return this.projectService.includePackageJsonAutoImports();
+		},
+
+		close() {},
+		log(_message: string) {},
+		sendPerformanceEvent(_kind: PerformanceEvent['kind'], _durationMs: number) {},
+
+		toPath(fileName: string) {
+			return toPath(fileName, this.currentDirectory, this.projectService.toCanonicalFileName);
+		},
+
+		getCachedDirectoryStructureHost(): undefined {
+			return undefined!; // TODO: GH#18217
+		},
+
+		getGlobalTypingsCacheLocation() {
+			return undefined;
+		},
+
+		useSourceOfProjectReferenceRedirect() {
+			return !this.getCompilerOptions().disableSourceOfProjectReferenceRedirect
+		},
+
+		onAutoImportProviderSettingsChanged() {},
+
+		onPackageJsonChange() {},
+
+		...override
 	};
 }

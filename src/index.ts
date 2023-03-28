@@ -5,29 +5,33 @@ import _44 from './4_4';
 import _47 from './4_7';
 import _50 from './5_0';
 
-export function decorate(
+export function createLanguageService(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
-	host: ts.LanguageServiceHost,
-	service: ts.LanguageService,
+	host: ts.LanguageServiceHost | undefined,
+	createLanguageService: (host: ts.LanguageServiceHost) => ts.LanguageService | undefined,
 	rootDirectory: string
-) {
-
+): ts.LanguageService | undefined {
+	if (!host) return undefined
 	if (semver.gte(ts.version, '5.0.0')) {
-		_50(ts, host, service, rootDirectory);
-		return true;
+		return _50(ts, host, createLanguageService, rootDirectory);
 	} 
 	else if (semver.gte(ts.version, '4.7.0')) {
+		const service = createLanguageService(host)
+		if (!service) return undefined
 		_47(ts, host, service);
-		return true;
+		return service
 	}
 	else if (semver.gte(ts.version, '4.4.0')) {
+		const service = createLanguageService(host)
+		if (!service) return undefined
 		_44(ts, host, service);
-		return true;
+		return service
 	}
 	else if (semver.gte(ts.version, '4.0.0')) {
+		const service = createLanguageService(host)
+		if (!service) return undefined
 		_40(ts, host, service);
-		return true;
+		return service
 	}
-
-	return false;
+	return createLanguageService(host)
 }
