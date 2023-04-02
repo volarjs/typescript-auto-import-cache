@@ -16,7 +16,7 @@ export function createProjectService(
 	host: System,
 	currentDirectory: string,
 	preferences: {
-		includePackageJsonAutoImports: PackageJsonAutoImportPreference
+		includePackageJsonAutoImports: PackageJsonAutoImportPreference;
 	},
 	serverMode: LanguageServiceMode,
 ) {

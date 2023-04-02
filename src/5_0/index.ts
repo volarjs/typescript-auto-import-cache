@@ -8,16 +8,16 @@ let projectService: ProjectService;
 export default function (
 	ts: typeof import('typescript/lib/tsserverlibrary'),
 	host: LanguageServiceHost,
-	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined, 
+	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined,
 	rootDirectory: string
 ): LanguageService | undefined {
 	// will need to make this the workspace directory
 	if (!projectService) {
 		projectService = createProjectService(
-			ts, 
-			ts.sys, 
+			ts,
+			ts.sys,
 			rootDirectory,
-			{ includePackageJsonAutoImports: PackageJsonAutoImportPreference.On }, 
+			{ includePackageJsonAutoImports: PackageJsonAutoImportPreference.On },
 			ts.LanguageServiceMode.Semantic
 		);
 	}
@@ -36,7 +36,7 @@ export default function (
 
 	// Immediatly invoke so the language service provider is setup
 	// this preinitialises getting auto imports in IDE
-	project.getPackageJsonAutoImportProvider()
+	project.getPackageJsonAutoImportProvider();
 
-	return project.languageService
+	return project.languageService;
 }

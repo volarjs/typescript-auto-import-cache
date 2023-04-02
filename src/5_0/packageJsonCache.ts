@@ -123,7 +123,7 @@ export function createPackageJsonCache(ts: typeof import('typescript/lib/tsserve
 		return packageJsons.has(combinePaths(directory, 'package.json'))
 			? Ternary.True
 			: directoriesWithoutPackageJson.has(directory)
-			? Ternary.False
-			: Ternary.Maybe;
+				? Ternary.False
+				: Ternary.Maybe;
 	}
 }

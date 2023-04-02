@@ -11,27 +11,27 @@ export function createLanguageService(
 	createLanguageService: (host: ts.LanguageServiceHost) => ts.LanguageService | undefined,
 	rootDirectory: string
 ): ts.LanguageService | undefined {
-	if (!host) return undefined
+	if (!host) return undefined;
 	if (semver.gte(ts.version, '5.0.0')) {
 		return _50(ts, host, createLanguageService, rootDirectory);
-	} 
+	}
 	else if (semver.gte(ts.version, '4.7.0')) {
-		const service = createLanguageService(host)
-		if (!service) return undefined
+		const service = createLanguageService(host);
+		if (!service) return undefined;
 		_47(ts, host, service);
-		return service
+		return service;
 	}
 	else if (semver.gte(ts.version, '4.4.0')) {
-		const service = createLanguageService(host)
-		if (!service) return undefined
+		const service = createLanguageService(host);
+		if (!service) return undefined;
 		_44(ts, host, service);
-		return service
+		return service;
 	}
 	else if (semver.gte(ts.version, '4.0.0')) {
-		const service = createLanguageService(host)
-		if (!service) return undefined
+		const service = createLanguageService(host);
+		if (!service) return undefined;
 		_40(ts, host, service);
-		return service
+		return service;
 	}
-	return createLanguageService(host)
+	return createLanguageService(host);
 }

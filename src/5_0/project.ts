@@ -5,14 +5,14 @@ import type {
 	Program,
 	ModuleResolutionHost,
 	PerformanceEvent,
-    LanguageService,
+	LanguageService,
 } from 'typescript/lib/tsserverlibrary';
 import type { PackageJsonInfo, ProjectPackageJsonInfo } from './packageJsonCache';
 import { ProjectService, PackageJsonAutoImportPreference } from './projectService';
 import { createModuleSpecifierCache } from './moduleSpecifierCache';
 
 export type Project = ReturnType<typeof createBaseProject>;
-type ProjectOptions = { projectService: ProjectService, compilerOptions: CompilerOptions, currentDirectory: string, rootNames: string[] }
+type ProjectOptions = { projectService: ProjectService, compilerOptions: CompilerOptions, currentDirectory: string, rootNames: string[]; };
 
 type SymlinkCache = any;
 
@@ -23,30 +23,30 @@ export function createProject(
 	options: ProjectOptions,
 	override: Partial<Project> = {}
 ) {
-	const project = createBaseProject(ts, host, createLanguageService, options, override)
+	const project = createBaseProject(ts, host, createLanguageService, options, override);
 	const languageService = createLanguageService(
 		new Proxy(host, {
 			get(target, key: keyof LanguageServiceHost) {
-				return key in project ? (project as any)[key] : target[key]
+				return key in project ? (project as any)[key] : target[key];
 			},
 			set(_target, key, value) {
-				(project as any)[key] = value
-				return true
+				(project as any)[key] = value;
+				return true;
 			}
 		})
-	)
-	project.languageService = languageService
-	project.languageServiceEnabled = !!languageService
-	project.program = languageService?.getProgram()
-	return project
+	);
+	project.languageService = languageService;
+	project.languageServiceEnabled = !!languageService;
+	project.program = languageService?.getProgram();
+	return project;
 }
 
 function createAutoImportProviderProject(
-	tsBase: typeof import('typescript/lib/tsserverlibrary'), 
-	host: LanguageServiceHost, 
+	tsBase: typeof import('typescript/lib/tsserverlibrary'),
+	host: LanguageServiceHost,
 	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined
 ) {
-	const ts = tsBase as any
+	const ts = tsBase as any;
 	const {
 		combinePaths,
 		inferredTypesContainingFile,
@@ -165,8 +165,7 @@ function createAutoImportProviderProject(
 
 			if (rootNames?.length) {
 				hostProject.log(
-					`AutoImportProviderProject: found ${rootNames.length} root files in ${dependenciesAdded} dependencies in ${
-						timestamp() - start
+					`AutoImportProviderProject: found ${rootNames.length} root files in ${dependenciesAdded} dependencies in ${timestamp() - start
 					} ms`,
 				);
 			}
@@ -245,32 +244,32 @@ function createAutoImportProviderProject(
 							'AutoImportProviderProject language service should never be used. To get the program, use `project.getCurrentProgram()`.',
 						);
 					},
-	
+
 					/** @internal */
 					onAutoImportProviderSettingsChanged(): never {
 						throw new Error('AutoImportProviderProject is an auto import provider; use `markAsDirty()` instead.');
 					},
-	
+
 					/** @internal */
 					onPackageJsonChange(): never {
 						throw new Error("package.json changes should be notified on an AutoImportProvider's host project");
 					},
-	
+
 					getModuleResolutionHostForAutoImportProvider(): never {
 						throw new Error(
 							'AutoImportProviderProject cannot provide its own host; use `hostProject.getModuleResolutionHostForAutomImportProvider()` instead.',
 						);
 					},
-	
+
 					includePackageJsonAutoImports() {
 						return PackageJsonAutoImportPreference.Off;
 					},
-	
+
 					getSymlinkCache() {
 						return hostProject.getSymlinkCache();
 					},
 				}
-			)
+			);
 		}
 	};
 }
@@ -294,17 +293,17 @@ function createBaseProject(
 	} = ts as any;
 	const AutoImportProviderProject = createAutoImportProviderProject(ts, host, createLanguageService);
 
-	const { projectService, compilerOptions, currentDirectory, rootNames } = options
+	const { projectService, compilerOptions, currentDirectory, rootNames } = options;
 
-	let projectVersion = host.getProjectVersion?.()
+	let projectVersion = host.getProjectVersion?.();
 	function updateProjectIfDirty(project: any) {
-		const newVersion = host.getProjectVersion?.()
-		if (projectVersion === newVersion) return
-		projectVersion = newVersion
-		project.hostProject.clearCachedExportInfoMap()
-		project.clearCachedExportInfoMap()
+		const newVersion = host.getProjectVersion?.();
+		if (projectVersion === newVersion) return;
+		projectVersion = newVersion;
+		project.hostProject.clearCachedExportInfoMap();
+		project.clearCachedExportInfoMap();
 	}
-		
+
 	return {
 		hostProject: undefined as any,
 
@@ -312,7 +311,7 @@ function createBaseProject(
 
 		getCanonicalFileName: projectService.toCanonicalFileName,
 
-		exportMapCache: undefined as undefined | { clear(): void },
+		exportMapCache: undefined as undefined | { clear(): void; },
 		getCachedExportInfoMap() {
 			return (this.exportMapCache ||= createCacheableExportInfoMap(this));
 		},
@@ -398,7 +397,7 @@ function createBaseProject(
 					readFile: this.projectService.host.readFile.bind(this.projectService.host),
 					getDirectories: this.projectService.host.getDirectories.bind(this.projectService.host),
 					// trace: this.projectService.host.trace?.bind(this.projectService.host),
-					trace: () => {},
+					trace: () => { },
 					// @ts-expect-error
 					useCaseSensitiveFileNames: this.program.useCaseSensitiveFileNames(),
 				};
@@ -409,7 +408,7 @@ function createBaseProject(
 		autoImportProviderHost: undefined as
 			| undefined
 			| false
-			| { getCurrentProgram(): Program | undefined; isEmpty(): boolean; close(): void },
+			| { getCurrentProgram(): Program | undefined; isEmpty(): boolean; close(): void; },
 		getPackageJsonAutoImportProvider(): Program | undefined {
 			if (this.autoImportProviderHost === false) {
 				return undefined;
@@ -452,7 +451,7 @@ function createBaseProject(
 		languageServiceEnabled: true,
 		languageService: undefined as undefined | LanguageService,
 		getLanguageService() {
-			return this.languageService
+			return this.languageService;
 		},
 
 		includePackageJsonAutoImports(): PackageJsonAutoImportPreference {
@@ -467,9 +466,9 @@ function createBaseProject(
 			return this.projectService.includePackageJsonAutoImports();
 		},
 
-		close() {},
-		log(_message: string) {},
-		sendPerformanceEvent(_kind: PerformanceEvent['kind'], _durationMs: number) {},
+		close() { },
+		log(_message: string) { },
+		sendPerformanceEvent(_kind: PerformanceEvent['kind'], _durationMs: number) { },
 
 		toPath(fileName: string) {
 			return toPath(fileName, this.currentDirectory, this.projectService.toCanonicalFileName);
@@ -484,12 +483,12 @@ function createBaseProject(
 		},
 
 		useSourceOfProjectReferenceRedirect() {
-			return !this.getCompilerOptions().disableSourceOfProjectReferenceRedirect
+			return !this.getCompilerOptions().disableSourceOfProjectReferenceRedirect;
 		},
 
-		onAutoImportProviderSettingsChanged() {},
+		onAutoImportProviderSettingsChanged() { },
 
-		onPackageJsonChange() {},
+		onPackageJsonChange() { },
 
 		...override
 	};
