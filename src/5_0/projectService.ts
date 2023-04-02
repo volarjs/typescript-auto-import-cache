@@ -1,4 +1,4 @@
-import type { Path, System, server, LanguageServiceMode } from 'typescript/lib/tsserverlibrary';
+import type { Path, System, server, LanguageServiceMode, UserPreferences } from 'typescript/lib/tsserverlibrary';
 import { createPackageJsonCache, PackageJsonCache, Ternary, ProjectPackageJsonInfo } from './packageJsonCache';
 
 export type ProjectService = ReturnType<typeof createProjectService>;
@@ -15,9 +15,7 @@ export function createProjectService(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
 	host: System,
 	currentDirectory: string,
-	preferences: {
-		includePackageJsonAutoImports: PackageJsonAutoImportPreference;
-	},
+	hostConfiguration: { preferences: UserPreferences; },
 	serverMode: LanguageServiceMode,
 ) {
 	const {
@@ -75,7 +73,11 @@ export function createProjectService(
 		},
 
 		includePackageJsonAutoImports(): PackageJsonAutoImportPreference {
-			return preferences.includePackageJsonAutoImports;
+			switch (hostConfiguration.preferences.includePackageJsonAutoImports) {
+				case 'on': return PackageJsonAutoImportPreference.On;
+				case 'off': return PackageJsonAutoImportPreference.Off;
+				default: return PackageJsonAutoImportPreference.Auto;
+			}
 		},
 
 		fileExists(fileName: NormalizedPath): boolean {

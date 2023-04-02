@@ -19,7 +19,7 @@ type SymlinkCache = any;
 export function createProject(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
 	host: LanguageServiceHost,
-	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined,
+	createLanguageService: (host: LanguageServiceHost) => LanguageService,
 	options: ProjectOptions,
 	override: Partial<Project> = {}
 ) {
@@ -44,7 +44,7 @@ export function createProject(
 function createAutoImportProviderProject(
 	tsBase: typeof import('typescript/lib/tsserverlibrary'),
 	host: LanguageServiceHost,
-	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined
+	createLanguageService: (host: LanguageServiceHost) => LanguageService
 ) {
 	const ts = tsBase as any;
 	const {
@@ -222,10 +222,12 @@ function createAutoImportProviderProject(
 				...this.compilerOptionsOverrides,
 			};
 
-			const rootNames = this.getRootFileNames(dependencySelection, hostProject, moduleResolutionHost, compilerOptions);
+			let rootNames: string[] | undefined = this.getRootFileNames(dependencySelection, hostProject, moduleResolutionHost, compilerOptions);
 			if (!rootNames.length) {
 				return undefined;
 			}
+
+			const self = this;
 
 			return createProject(
 				tsBase,
@@ -233,7 +235,9 @@ function createAutoImportProviderProject(
 				createLanguageService,
 				{
 					projectService: hostProject.projectService,
-					rootNames,
+					get rootNames() {
+						return rootNames ??= self.getRootFileNames(hostProject.includePackageJsonAutoImports(), hostProject, moduleResolutionHost, compilerOptions);
+					},
 					currentDirectory: hostProject.currentDirectory,
 					compilerOptions,
 				},
@@ -243,6 +247,11 @@ function createAutoImportProviderProject(
 						throw new Error(
 							'AutoImportProviderProject language service should never be used. To get the program, use `project.getCurrentProgram()`.',
 						);
+					},
+
+					markAsDirty() {
+						rootNames = undefined;
+						// super.markAsDirty(); // not important, just for update project version to make new setting take effect without code change, but nice to have implementation
 					},
 
 					/** @internal */
@@ -277,9 +286,9 @@ function createAutoImportProviderProject(
 function createBaseProject(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
 	host: LanguageServiceHost,
-	createLanguageService: (host: LanguageServiceHost) => LanguageService | undefined,
+	createLanguageService: (host: LanguageServiceHost) => LanguageService,
 	options: ProjectOptions,
-	override: Record<string, unknown> = {}
+	override: Record<string, unknown>,
 ) {
 	const {
 		combinePaths,
@@ -293,7 +302,7 @@ function createBaseProject(
 	} = ts as any;
 	const AutoImportProviderProject = createAutoImportProviderProject(ts, host, createLanguageService);
 
-	const { projectService, compilerOptions, currentDirectory, rootNames } = options;
+	const { projectService, compilerOptions, currentDirectory } = options;
 
 	let projectVersion = host.getProjectVersion?.();
 	function updateProjectIfDirty(project: any) {
@@ -371,7 +380,9 @@ function createBaseProject(
 			return this.projectService.getPackageJsonsVisibleToFile(fileName, rootDir);
 		},
 
-		rootNames,
+		get rootNames() {
+			return options.rootNames;
+		},
 		getScriptFileNames() {
 			return this.rootNames;
 		},
@@ -408,7 +419,7 @@ function createBaseProject(
 		autoImportProviderHost: undefined as
 			| undefined
 			| false
-			| { getCurrentProgram(): Program | undefined; isEmpty(): boolean; close(): void; },
+			| { getCurrentProgram(): Program | undefined; isEmpty(): boolean; close(): void; markAsDirty(): void; },
 		getPackageJsonAutoImportProvider(): Program | undefined {
 			if (this.autoImportProviderHost === false) {
 				return undefined;
@@ -486,7 +497,18 @@ function createBaseProject(
 			return !this.getCompilerOptions().disableSourceOfProjectReferenceRedirect;
 		},
 
-		onAutoImportProviderSettingsChanged() { },
+		markAsDirty() {
+			projectVersion = undefined;
+		},
+
+		onAutoImportProviderSettingsChanged() {
+			if (this.autoImportProviderHost === false) {
+				this.autoImportProviderHost = undefined;
+			}
+			else {
+				this.autoImportProviderHost?.markAsDirty();
+			}
+		},
 
 		onPackageJsonChange() { },
 
