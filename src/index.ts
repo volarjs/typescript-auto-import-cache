@@ -15,6 +15,7 @@ export function createLanguageService(
 ): {
 	languageService: ts.LanguageService;
 	setPreferences?(preferences: ts.UserPreferences): void;
+	projectUpdated?(updatedProjectDirectory: string): void;
 } {
 	if (semver.gte(ts.version, '5.0.0')) {
 		return _50(ts, host, createLanguageService, rootDirectory);

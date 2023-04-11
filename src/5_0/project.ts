@@ -6,28 +6,34 @@ import type {
 	ModuleResolutionHost,
 	PerformanceEvent,
 	LanguageService,
+	ProjectReference
 } from 'typescript/lib/tsserverlibrary';
-import type { PackageJsonInfo, ProjectPackageJsonInfo } from './packageJsonCache';
+import type { ProjectPackageJsonInfo } from './packageJsonCache';
 import { ProjectService, PackageJsonAutoImportPreference } from './projectService';
 import { createModuleSpecifierCache } from './moduleSpecifierCache';
+import { createAutoImportProviderProjectStatic } from './autoImportProviderProject';
+import { SymlinkCache } from './symlinkCache';
+import { ExportInfoMap } from './exportInfoMap';
 
 export type Project = ReturnType<typeof createBaseProject>;
-type ProjectOptions = { projectService: ProjectService, compilerOptions: CompilerOptions, currentDirectory: string, rootNames: string[]; };
-
-type SymlinkCache = any;
+interface ProjectOptions { 
+	projectService: ProjectService;
+	compilerOptions: CompilerOptions;
+	currentDirectory: string;
+	rootNames: string[] | undefined;
+};
 
 export function createProject(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
 	host: LanguageServiceHost,
 	createLanguageService: (host: LanguageServiceHost) => LanguageService,
 	options: ProjectOptions,
-	override: Partial<Project> = {}
-) {
-	const project = createBaseProject(ts, host, createLanguageService, options, override);
+): Project {
+	const project = createBaseProject(ts, host, createLanguageService, options);
 	const languageService = createLanguageService(
 		new Proxy(host, {
 			get(target, key: keyof LanguageServiceHost) {
-				return key in project ? (project as any)[key] : target[key];
+				return key in target ? target[key] : (project as any)[key];
 			},
 			set(_target, key, value) {
 				(project as any)[key] = value;
@@ -37,258 +43,15 @@ export function createProject(
 	);
 	project.languageService = languageService;
 	project.languageServiceEnabled = !!languageService;
-	project.program = languageService?.getProgram();
+	project.program = languageService.getProgram(); 
 	return project;
-}
-
-function createAutoImportProviderProject(
-	tsBase: typeof import('typescript/lib/tsserverlibrary'),
-	host: LanguageServiceHost,
-	createLanguageService: (host: LanguageServiceHost) => LanguageService
-) {
-	const ts = tsBase as any;
-	const {
-		combinePaths,
-		inferredTypesContainingFile,
-		arrayFrom,
-		resolvePackageNameToPackageJson,
-		concatenate,
-		forEach,
-		startsWith,
-		getEntrypointsFromPackageJsonInfo,
-		mapDefined,
-		timestamp
-	} = ts;
-	return {
-		maxDependencies: 10,
-
-		compilerOptionsOverrides: {
-			diagnostics: false,
-			skipLibCheck: true,
-			sourceMap: false,
-			types: ts.emptyArray,
-			lib: ts.emptyArray,
-			noLib: true,
-		},
-
-		getRootFileNames(
-			dependencySelection: PackageJsonAutoImportPreference,
-			hostProject: Project,
-			moduleResolutionHost: ModuleResolutionHost,
-			compilerOptions: CompilerOptions,
-		): string[] {
-			if (!dependencySelection) {
-				return ts.emptyArray;
-			}
-			const program = hostProject.getCurrentProgram();
-			if (!program) {
-				return ts.emptyArray;
-			}
-
-			const start = timestamp();
-			let dependencyNames: Set<string> | undefined;
-			let rootNames: string[] | undefined;
-			const rootFileName = combinePaths(hostProject.currentDirectory, inferredTypesContainingFile);
-			const packageJsons = hostProject.getPackageJsonsForAutoImport(combinePaths(hostProject.currentDirectory, rootFileName));
-			for (const packageJson of packageJsons) {
-				packageJson.dependencies?.forEach((_, dependenyName) => addDependency(dependenyName));
-				packageJson.peerDependencies?.forEach((_, dependencyName) => addDependency(dependencyName));
-			}
-
-			let dependenciesAdded = 0;
-			if (dependencyNames) {
-				const symlinkCache = hostProject.getSymlinkCache();
-				for (const name of arrayFrom(dependencyNames.keys())) {
-					// Avoid creating a large project that would significantly slow down time to editor interactivity
-					if (dependencySelection === PackageJsonAutoImportPreference.Auto && dependenciesAdded > this.maxDependencies) {
-						hostProject.log(
-							`AutoImportProviderProject: attempted to add more than ${this.maxDependencies} dependencies. Aborting.`,
-						);
-						return ts.emptyArray;
-					}
-
-					// 1. Try to load from the implementation package. For many dependencies, the
-					//	package.json will exist, but the package will not contain any typings,
-					//	so `entrypoints` will be undefined. In that case, or if the dependency
-					//	is missing altogether, we will move on to trying the @types package (2).
-					const packageJson = resolvePackageNameToPackageJson(
-						name,
-						hostProject.currentDirectory,
-						compilerOptions,
-						moduleResolutionHost,
-						// @ts-expect-error
-						program.getModuleResolutionCache(),
-					);
-					if (packageJson) {
-						const entrypoints = getRootNamesFromPackageJson(packageJson, program, symlinkCache);
-						if (entrypoints) {
-							rootNames = concatenate(rootNames, entrypoints);
-							dependenciesAdded += entrypoints.length ? 1 : 0;
-							continue;
-						}
-					}
-
-					// 2. Try to load from the @types package in the tree and in the global
-					//	typings cache location, if enabled.
-					// @ts-expect-error
-					const done = forEach([hostProject.currentDirectory, hostProject.getGlobalTypingsCacheLocation()], (directory) => {
-						if (directory) {
-							const typesPackageJson = resolvePackageNameToPackageJson(
-								`@types/${name}`,
-								directory,
-								compilerOptions,
-								moduleResolutionHost,
-								// @ts-expect-error
-								program.getModuleResolutionCache(),
-							);
-							if (typesPackageJson) {
-								const entrypoints = getRootNamesFromPackageJson(typesPackageJson, program, symlinkCache);
-								rootNames = concatenate(rootNames, entrypoints);
-								dependenciesAdded += entrypoints?.length ? 1 : 0;
-								return true;
-							}
-						}
-					});
-
-					if (done) continue;
-
-					// 3. If the @types package did not exist and the user has settings that
-					//	allow processing JS from node_modules, go back to the implementation
-					//	package and load the JS.
-					if (packageJson && compilerOptions.allowJs && compilerOptions.maxNodeModuleJsDepth) {
-						const entrypoints = getRootNamesFromPackageJson(packageJson, program, symlinkCache, /*allowJs*/ true);
-						rootNames = concatenate(rootNames, entrypoints);
-						dependenciesAdded += entrypoints?.length ? 1 : 0;
-					}
-				}
-			}
-
-			if (rootNames?.length) {
-				hostProject.log(
-					`AutoImportProviderProject: found ${rootNames.length} root files in ${dependenciesAdded} dependencies in ${timestamp() - start
-					} ms`,
-				);
-			}
-			return rootNames || ts.emptyArray;
-
-			function addDependency(dependency: string) {
-				if (!startsWith(dependency, '@types/')) {
-					(dependencyNames || (dependencyNames = new Set())).add(dependency);
-				}
-			}
-
-			function getRootNamesFromPackageJson(
-				packageJson: PackageJsonInfo,
-				program: Program,
-				symlinkCache: SymlinkCache,
-				resolveJs?: boolean,
-			) {
-				const entrypoints = getEntrypointsFromPackageJsonInfo(
-					packageJson,
-					compilerOptions,
-					moduleResolutionHost,
-					// @ts-expect-error
-					program.getModuleResolutionCache(),
-					resolveJs,
-				);
-				if (entrypoints) {
-					const real = moduleResolutionHost.realpath?.(packageJson.packageDirectory);
-					const isSymlink = real && real !== packageJson.packageDirectory;
-					if (isSymlink) {
-						symlinkCache.setSymlinkedDirectory(packageJson.packageDirectory, {
-							real,
-							realPath: hostProject.toPath(real),
-						});
-					}
-
-					// @ts-expect-error
-					return mapDefined(entrypoints, (entrypoint) => {
-						const resolvedFileName = isSymlink ? entrypoint.replace(packageJson.packageDirectory, real) : entrypoint;
-						if (!program.getSourceFile(resolvedFileName) && !(isSymlink && program.getSourceFile(entrypoint))) {
-							return resolvedFileName;
-						}
-					});
-				}
-			}
-		},
-
-		create(dependencySelection: PackageJsonAutoImportPreference, hostProject: Project, moduleResolutionHost: ModuleResolutionHost) {
-			if (dependencySelection === PackageJsonAutoImportPreference.Off) {
-				return undefined;
-			}
-
-			const compilerOptions = {
-				...hostProject.getCompilerOptions(),
-				...this.compilerOptionsOverrides,
-			};
-
-			let rootNames: string[] | undefined = this.getRootFileNames(dependencySelection, hostProject, moduleResolutionHost, compilerOptions);
-			if (!rootNames.length) {
-				return undefined;
-			}
-
-			const self = this;
-
-			return createProject(
-				tsBase,
-				host,
-				createLanguageService,
-				{
-					projectService: hostProject.projectService,
-					get rootNames() {
-						return rootNames ??= self.getRootFileNames(hostProject.includePackageJsonAutoImports(), hostProject, moduleResolutionHost, compilerOptions);
-					},
-					currentDirectory: hostProject.currentDirectory,
-					compilerOptions,
-				},
-				{
-					hostProject,
-					getLanguageService(): never {
-						throw new Error(
-							'AutoImportProviderProject language service should never be used. To get the program, use `project.getCurrentProgram()`.',
-						);
-					},
-
-					markAsDirty() {
-						rootNames = undefined;
-						// super.markAsDirty(); // not important, just for update project version to make new setting take effect without code change, but nice to have implementation
-					},
-
-					/** @internal */
-					onAutoImportProviderSettingsChanged(): never {
-						throw new Error('AutoImportProviderProject is an auto import provider; use `markAsDirty()` instead.');
-					},
-
-					/** @internal */
-					onPackageJsonChange(): never {
-						throw new Error("package.json changes should be notified on an AutoImportProvider's host project");
-					},
-
-					getModuleResolutionHostForAutoImportProvider(): never {
-						throw new Error(
-							'AutoImportProviderProject cannot provide its own host; use `hostProject.getModuleResolutionHostForAutomImportProvider()` instead.',
-						);
-					},
-
-					includePackageJsonAutoImports() {
-						return PackageJsonAutoImportPreference.Off;
-					},
-
-					getSymlinkCache() {
-						return hostProject.getSymlinkCache();
-					},
-				}
-			);
-		}
-	};
 }
 
 function createBaseProject(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
 	host: LanguageServiceHost,
 	createLanguageService: (host: LanguageServiceHost) => LanguageService,
-	options: ProjectOptions,
-	override: Record<string, unknown>,
+	options: ProjectOptions
 ) {
 	const {
 		combinePaths,
@@ -298,29 +61,26 @@ function createBaseProject(
 		createCacheableExportInfoMap,
 		timestamp,
 		isInsideNodeModules,
-		LanguageServiceMode
+		LanguageServiceMode,
 	} = ts as any;
-	const AutoImportProviderProject = createAutoImportProviderProject(ts, host, createLanguageService);
+	const AutoImportProviderProject = createAutoImportProviderProjectStatic(ts, host, createLanguageService);
 
 	const { projectService, compilerOptions, currentDirectory } = options;
 
-	let projectVersion = host.getProjectVersion?.();
 	function updateProjectIfDirty(project: any) {
-		const newVersion = host.getProjectVersion?.();
-		if (projectVersion === newVersion) return;
-		projectVersion = newVersion;
-		project.hostProject.clearCachedExportInfoMap();
-		project.clearCachedExportInfoMap();
+		return project.dirty && project.updateGraph();
 	}
-
+	
 	return {
+		dirty: false,
+
 		hostProject: undefined as any,
 
 		projectService,
 
 		getCanonicalFileName: projectService.toCanonicalFileName,
 
-		exportMapCache: undefined as undefined | { clear(): void; },
+		exportMapCache: undefined as undefined | ExportInfoMap,
 		getCachedExportInfoMap() {
 			return (this.exportMapCache ||= createCacheableExportInfoMap(this));
 		},
@@ -351,10 +111,14 @@ function createBaseProject(
 			return this.currentDirectory;
 		},
 
+		getProjectReferences(): readonly ProjectReference[] | undefined {
+			return host.getProjectReferences?.()
+		},
+
 		symlinks: undefined as SymlinkCache | undefined,
 		getSymlinkCache(): SymlinkCache {
 			if (!this.symlinks) {
-				this.symlinks = createSymlinkCache(this.getCurrentDirectory(), this.getCanonicalFileName);
+				this.symlinks = createSymlinkCache(this.getCurrentDirectory(), this.getCanonicalFileName) as SymlinkCache;
 			}
 
 			if (this.program && !this.symlinks.hasProcessedResolutions()) {
@@ -392,8 +156,9 @@ function createBaseProject(
 			}
 			return this.program.getSourceFileByPath(path);
 		},
+
 		isEmpty() {
-			return !this.rootNames.length;
+			return !this.rootNames?.length;
 		},
 
 		getModuleResolutionHostForAutoImportProvider(): ModuleResolutionHost {
@@ -403,7 +168,8 @@ function createBaseProject(
 					fileExists: this.program.fileExists,
 					// @ts-expect-error
 					directoryExists: this.program.directoryExists,
-					realpath: undefined,
+					// @ts-expect-error
+					realpath: this.program.realpath || this.projectService.host.realpath?.bind(this.projectService.host),
 					getCurrentDirectory: this.getCurrentDirectory.bind(this),
 					readFile: this.projectService.host.readFile.bind(this.projectService.host),
 					getDirectories: this.projectService.host.getDirectories.bind(this.projectService.host),
@@ -497,10 +263,6 @@ function createBaseProject(
 			return !this.getCompilerOptions().disableSourceOfProjectReferenceRedirect;
 		},
 
-		markAsDirty() {
-			projectVersion = undefined;
-		},
-
 		onAutoImportProviderSettingsChanged() {
 			if (this.autoImportProviderHost === false) {
 				this.autoImportProviderHost = undefined;
@@ -510,8 +272,6 @@ function createBaseProject(
 			}
 		},
 
-		onPackageJsonChange() { },
-
-		...override
+		onPackageJsonChange() { }
 	};
 }
