@@ -33,7 +33,7 @@ export function createProject(
 	const languageService = createLanguageService(
 		new Proxy(host, {
 			get(target, key: keyof LanguageServiceHost) {
-				return key in target ? target[key] : (project as any)[key];
+				return target[key] ?? (project as any)[key];
 			},
 			set(_target, key, value) {
 				(project as any)[key] = value;
