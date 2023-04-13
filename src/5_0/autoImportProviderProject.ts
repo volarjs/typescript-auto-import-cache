@@ -219,7 +219,6 @@ function createAutoImportProviderProject(
 			createLanguageService,
 			{
 				projectService: hostProject.projectService,
-				rootNames,
 				currentDirectory: hostProject.currentDirectory,
 				compilerOptions,
 			}
@@ -305,7 +304,7 @@ function createAutoImportProviderProject(
 
 		getModuleResolutionCache() {
 			// @ts-expect-error
-			return this.hostProject.getCurrentProgram()?.getModuleResolutionCache();
+			return this.hostProject.languageService?.getProgram()?.getModuleResolutionCache();
 		},
 	}
 

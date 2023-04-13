@@ -30,7 +30,6 @@ export default function (
 		createLanguageService,
 		{
 			projectService,
-			rootNames: host.getScriptFileNames(),
 			currentDirectory: host.getCurrentDirectory(),
 			compilerOptions: host.getCompilationSettings(),
 		}
@@ -44,8 +43,7 @@ export default function (
 		'getPackageJsonsVisibleToFile',
 		'getPackageJsonAutoImportProvider',
 		'includePackageJsonAutoImports',
-		'useSourceOfProjectReferenceRedirect',
-		'log',
+		'useSourceOfProjectReferenceRedirect'
 	]
 	proxyMethods.forEach(key => (host as any)[key] = project[key].bind(project))
 	initProject(project, host, createLanguageService)

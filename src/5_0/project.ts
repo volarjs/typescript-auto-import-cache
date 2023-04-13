@@ -1,7 +1,6 @@
 import type {
 	CompilerOptions,
 	LanguageServiceHost,
-	Path,
 	Program,
 	ModuleResolutionHost,
 	PerformanceEvent,
@@ -19,7 +18,6 @@ interface ProjectOptions {
 	projectService: ProjectService;
 	compilerOptions: CompilerOptions;
 	currentDirectory: string;
-	rootNames: string[] | undefined;
 };
 
 export function createProject(
@@ -48,11 +46,10 @@ export function createProject(
 	
 	return {
 		dirty: false,
-
 		hostProject: undefined as any,
-
+		languageServiceEnabled: true,
+		languageService: undefined as undefined | LanguageService,
 		projectService,
-
 		getCanonicalFileName: projectService.toCanonicalFileName,
 
 		exportMapCache: undefined as undefined | ExportInfoMap,
@@ -113,23 +110,6 @@ export function createProject(
 		},
 		getPackageJsonsVisibleToFile(fileName: string, rootDir?: string): readonly ProjectPackageJsonInfo[] {
 			return this.projectService.getPackageJsonsVisibleToFile(fileName, rootDir);
-		},
-
-		get rootNames() {
-			return options.rootNames;
-		},
-		getScriptFileNames() {
-			return this.rootNames;
-		},
-		getSourceFile(path: Path) {
-			if (!this.program) {
-				return undefined;
-			}
-			return this.program.getSourceFileByPath(path);
-		},
-
-		isEmpty() {
-			return !this.rootNames?.length;
 		},
 
 		getModuleResolutionHostForAutoImportProvider(): ModuleResolutionHost {
@@ -196,12 +176,6 @@ export function createProject(
 			}
 		},
 
-		languageServiceEnabled: true,
-		languageService: undefined as undefined | LanguageService,
-		getLanguageService() {
-			return this.languageService;
-		},
-
 		includePackageJsonAutoImports(): PackageJsonAutoImportPreference {
 			if (
 				this.projectService.includePackageJsonAutoImports() === PackageJsonAutoImportPreference.Off ||
@@ -222,10 +196,6 @@ export function createProject(
 			return toPath(fileName, this.currentDirectory, this.projectService.toCanonicalFileName);
 		},
 
-		getCachedDirectoryStructureHost(): undefined {
-			return undefined!; // TODO: GH#18217
-		},
-
 		getGlobalTypingsCacheLocation() {
 			return undefined;
 		},
@@ -242,8 +212,6 @@ export function createProject(
 				this.autoImportProviderHost?.markAsDirty();
 			}
 		},
-
-		onPackageJsonChange() { }
 	};
 }
 
@@ -254,7 +222,6 @@ export function initProject<P extends Project>(
 ): P {
 	const languageService = createLanguageService(host);
 	project.languageService = languageService;
-	project.languageServiceEnabled = !!languageService;
 	project.program = languageService.getProgram(); 
 	return project
 }
