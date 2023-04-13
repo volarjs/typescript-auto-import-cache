@@ -1,5 +1,5 @@
 import type { CompilerOptions, LanguageService, LanguageServiceHost, ModuleResolutionHost, Program, TypeAcquisition } from 'typescript/lib/tsserverlibrary';
-import { type Project, createProject } from './project';
+import { type Project, createProject, initProject } from './project';
 import { PackageJsonAutoImportPreference } from './projectService';
 import type { PackageJsonInfo } from './packageJsonCache';
 import { SymlinkCache } from './symlinkCache';
@@ -212,7 +212,7 @@ function createAutoImportProviderProject(
 	const ts = tsBase as any;
 	const { some } = ts;
 
-	return {
+	const project = {
 		...createProject(
 			tsBase,
 			host,
@@ -290,11 +290,7 @@ function createAutoImportProviderProject(
 		getModuleResolutionHostForAutoImportProvider(): never {
 			throw new Error("AutoImportProviderProject cannot provide its own host; use `hostProject.getModuleResolutionHostForAutomImportProvider()` instead.");
 		},
-	
-		getProjectReferences() {
-			return this.hostProject.getProjectReferences();
-		},
-	
+
 		includePackageJsonAutoImports() {
 			return PackageJsonAutoImportPreference.Off;
 		},
@@ -312,4 +308,18 @@ function createAutoImportProviderProject(
 			return this.hostProject.getCurrentProgram()?.getModuleResolutionCache();
 		},
 	}
+
+	return initProject(
+		project,
+		new Proxy(host, {
+			get(target, key: keyof LanguageServiceHost) {
+				return key in project ? (project as any)[key] : target[key];
+			},
+			set(_target, key, value) {
+				(project as any)[key] = value;
+				return true;
+			}
+		}),
+		createLanguageService
+	)
 }

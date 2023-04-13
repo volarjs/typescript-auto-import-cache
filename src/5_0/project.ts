@@ -5,8 +5,7 @@ import type {
 	Program,
 	ModuleResolutionHost,
 	PerformanceEvent,
-	LanguageService,
-	ProjectReference
+	LanguageService
 } from 'typescript/lib/tsserverlibrary';
 import type { ProjectPackageJsonInfo } from './packageJsonCache';
 import { ProjectService, PackageJsonAutoImportPreference } from './projectService';
@@ -15,7 +14,7 @@ import { createAutoImportProviderProjectStatic } from './autoImportProviderProje
 import { SymlinkCache } from './symlinkCache';
 import { ExportInfoMap } from './exportInfoMap';
 
-export type Project = ReturnType<typeof createBaseProject>;
+export type Project = ReturnType<typeof createProject>;
 interface ProjectOptions { 
 	projectService: ProjectService;
 	compilerOptions: CompilerOptions;
@@ -24,30 +23,6 @@ interface ProjectOptions {
 };
 
 export function createProject(
-	ts: typeof import('typescript/lib/tsserverlibrary'),
-	host: LanguageServiceHost,
-	createLanguageService: (host: LanguageServiceHost) => LanguageService,
-	options: ProjectOptions,
-): Project {
-	const project = createBaseProject(ts, host, createLanguageService, options);
-	const languageService = createLanguageService(
-		new Proxy(host, {
-			get(target, key: keyof LanguageServiceHost) {
-				return target[key] ?? (project as any)[key];
-			},
-			set(_target, key, value) {
-				(project as any)[key] = value;
-				return true;
-			}
-		})
-	);
-	project.languageService = languageService;
-	project.languageServiceEnabled = !!languageService;
-	project.program = languageService.getProgram(); 
-	return project;
-}
-
-function createBaseProject(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
 	host: LanguageServiceHost,
 	createLanguageService: (host: LanguageServiceHost) => LanguageService,
@@ -109,10 +84,6 @@ function createBaseProject(
 		currentDirectory: projectService.getNormalizedAbsolutePath(currentDirectory || ''),
 		getCurrentDirectory(): string {
 			return this.currentDirectory;
-		},
-
-		getProjectReferences(): readonly ProjectReference[] | undefined {
-			return host.getProjectReferences?.()
 		},
 
 		symlinks: undefined as SymlinkCache | undefined,
@@ -274,4 +245,16 @@ function createBaseProject(
 
 		onPackageJsonChange() { }
 	};
+}
+
+export function initProject<P extends Project>(
+	project: P,
+	host: LanguageServiceHost, 
+	createLanguageService: (host: LanguageServiceHost) => LanguageService
+): P {
+	const languageService = createLanguageService(host);
+	project.languageService = languageService;
+	project.languageServiceEnabled = !!languageService;
+	project.program = languageService.getProgram(); 
+	return project
 }

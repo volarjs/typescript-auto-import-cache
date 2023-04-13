@@ -1,5 +1,5 @@
 import { createProjectService, ProjectService } from './projectService';
-import { createProject, Project } from './project';
+import { createProject, initProject, Project } from './project';
 import type { LanguageService, LanguageServiceHost, UserPreferences } from 'typescript/lib/tsserverlibrary';
 
 // only create the once for all hosts, as this will improve performance as the internal cache can be reused
@@ -36,9 +36,19 @@ export default function (
 		}
 	);
 
-	// Immediatly invoke so the language service provider is setup
-	// this preinitialises getting auto imports in IDE
-	project.getPackageJsonAutoImportProvider();
+	const proxyMethods: (keyof Project)[] = [
+		'getCachedExportInfoMap',
+		'getModuleSpecifierCache',
+		'getGlobalTypingsCacheLocation',
+		'getSymlinkCache',
+		'getPackageJsonsVisibleToFile',
+		'getPackageJsonAutoImportProvider',
+		'includePackageJsonAutoImports',
+		'useSourceOfProjectReferenceRedirect',
+		'log',
+	]
+	proxyMethods.forEach(key => (host as any)[key] = project[key].bind(project))
+	initProject(project, host, createLanguageService)
 	projects.add(project)
 
 	return {
