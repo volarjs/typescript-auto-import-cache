@@ -9,16 +9,16 @@ export { PackageJsonAutoImportPreference } from './5_0/projectService';
 
 export function createLanguageService(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
+	sys: ts.System,
 	host: ts.LanguageServiceHost,
-	createLanguageService: (host: ts.LanguageServiceHost) => ts.LanguageService,
-	rootDirectory: string,
+	createLanguageService: (host: ts.LanguageServiceHost) => ts.LanguageService
 ): {
 	languageService: ts.LanguageService;
 	setPreferences?(preferences: ts.UserPreferences): void;
 	projectUpdated?(updatedProjectDirectory: string): void;
 } {
 	if (semver.gte(ts.version, '5.0.0')) {
-		return _50(ts, host, createLanguageService, rootDirectory);
+		return _50(ts, sys, host, createLanguageService);
 	}
 	else if (semver.gte(ts.version, '4.7.0')) {
 		const service = createLanguageService(host);

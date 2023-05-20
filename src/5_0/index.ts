@@ -8,17 +8,17 @@ const projects = new Set<Project>()
 
 export default function (
 	ts: typeof import('typescript/lib/tsserverlibrary'),
+	sys: import('typescript/lib/tsserverlibrary').System,
 	host: LanguageServiceHost,
-	createLanguageService: (host: LanguageServiceHost) => LanguageService,
-	rootDirectory: string
+	createLanguageService: (host: LanguageServiceHost) => LanguageService
 ) {
 	const hostConfiguration = { preferences: { includePackageJsonAutoImports: 'auto' } as UserPreferences };
 
 	if (!projectService) {
 		projectService = createProjectService(
 			ts,
-			ts.sys,
-			rootDirectory,
+			sys,
+			host.getCurrentDirectory(),
 			hostConfiguration,
 			ts.LanguageServiceMode.Semantic
 		);

@@ -13,7 +13,7 @@ export const enum PackageJsonAutoImportPreference {
 
 export function createProjectService(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
-	host: System,
+	sys: System,
 	currentDirectory: string,
 	hostConfiguration: { preferences: UserPreferences; },
 	serverMode: LanguageServiceMode,
@@ -29,9 +29,9 @@ export function createProjectService(
 
 	const projectService = {
 		serverMode,
-		host,
+		host: sys,
 		currentDirectory: toNormalizedPath(currentDirectory),
-		toCanonicalFileName: createGetCanonicalFileName(host.useCaseSensitiveFileNames),
+		toCanonicalFileName: createGetCanonicalFileName(sys.useCaseSensitiveFileNames),
 		toPath(fileName: string) {
 			return toPath(fileName, this.currentDirectory, this.toCanonicalFileName);
 		},
