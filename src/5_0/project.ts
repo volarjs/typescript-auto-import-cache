@@ -14,7 +14,7 @@ import { SymlinkCache } from './symlinkCache';
 import { ExportInfoMap } from './exportInfoMap';
 
 export type Project = ReturnType<typeof createProject>;
-interface ProjectOptions { 
+export interface ProjectOptions { 
 	projectService: ProjectService;
 	compilerOptions: CompilerOptions;
 	currentDirectory: string;

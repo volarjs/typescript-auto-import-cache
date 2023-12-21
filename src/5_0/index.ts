@@ -10,7 +10,8 @@ export default function (
 	ts: typeof import('typescript/lib/tsserverlibrary'),
 	sys: import('typescript/lib/tsserverlibrary').System,
 	host: LanguageServiceHost,
-	createLanguageService: (host: LanguageServiceHost) => LanguageService
+	createLanguageService: (host: LanguageServiceHost) => LanguageService,
+	_createProject: typeof createProject = createProject
 ) {
 	const hostConfiguration = { preferences: { includePackageJsonAutoImports: 'auto' } as UserPreferences };
 
@@ -24,7 +25,7 @@ export default function (
 		);
 	}
 
-	const project = createProject(
+	const project = _createProject(
 		ts,
 		host,
 		createLanguageService,
