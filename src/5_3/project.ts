@@ -8,11 +8,19 @@ export function createProject(
 	createLanguageService: (host: LanguageServiceHost) => LanguageService,
 	options: ProjectOptions
 ) {
-	const { createSymlinkCache } = ts as any;
+	const { createSymlinkCache, ensureTrailingDirectorySeparator } = ts as any;
 	const project = _createProject(ts, host, createLanguageService, options);
 	project.getSymlinkCache = () => {
 		if (!project.symlinks) {
 			project.symlinks = createSymlinkCache(project.getCurrentDirectory(), project.getCanonicalFileName);
+			const setSymlinkedDirectory = project.symlinks!.setSymlinkedDirectory;
+			project.symlinks!.setSymlinkedDirectory = (symlink, real) => {
+				if (typeof real === 'object') {
+					real.real = ensureTrailingDirectorySeparator(real.real);
+					real.realPath = ensureTrailingDirectorySeparator(real.realPath);
+				}
+				setSymlinkedDirectory(symlink, real);
+			};
 		}
 		if (project.program && !(project.symlinks as unknown as SymlinkCache).hasProcessedResolutions()) {
 			(project.symlinks as unknown as SymlinkCache).setSymlinksFromResolutions(
