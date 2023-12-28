@@ -224,6 +224,11 @@ function createAutoImportProviderProject(
 			}
 		),
 
+		projectVersion: 0,
+		getProjectVersion() {
+			return this.projectVersion.toString();
+		},
+
 		rootFileNames: rootNames as undefined | string[],
 
 		hostProject,
@@ -266,6 +271,7 @@ function createAutoImportProviderProject(
 		markAsDirty() {
 			if (!this.dirty) {
 				this.rootFileNames = undefined;
+				this.projectVersion++;
 				this.dirty = true;
 			}
 		},
