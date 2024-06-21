@@ -18,6 +18,7 @@ export interface ProjectOptions {
 	projectService: ProjectService;
 	compilerOptions: CompilerOptions;
 	currentDirectory: string;
+	createModuleSpecifierCache?: typeof createModuleSpecifierCache;
 };
 
 export function createProject(
@@ -60,7 +61,7 @@ export function createProject(
 			this.exportMapCache?.clear();
 		},
 
-		moduleSpecifierCache: createModuleSpecifierCache(),
+		moduleSpecifierCache: (options.createModuleSpecifierCache ?? createModuleSpecifierCache)(),
 		getModuleSpecifierCache() {
 			return this.moduleSpecifierCache;
 		},
