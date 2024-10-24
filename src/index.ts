@@ -6,6 +6,7 @@ import _47 from './4_7';
 import _50 from './5_0';
 import _53 from './5_3';
 import _55 from './5_5';
+import _56 from './5_6';
 
 export { PackageJsonAutoImportPreference } from './5_0/projectService';
 
@@ -19,6 +20,9 @@ export function createLanguageService(
 	setPreferences?(preferences: ts.UserPreferences): void;
 	projectUpdated?(updatedProjectDirectory: string): void;
 } {
+	if (semver.gte(ts.version, '5.6.1')) {
+		return _56(ts, sys, host, createLanguageService);
+	}
 	if (semver.gte(ts.version, '5.5.1')) {
 		return _55(ts, sys, host, createLanguageService);
 	}
