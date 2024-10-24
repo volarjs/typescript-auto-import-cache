@@ -37,6 +37,12 @@ export function createProject(
 		isInsideNodeModules,
 		LanguageServiceMode,
 	} = ts as any;
+
+	const tsCreateModuleSpecifierCache = (ts.server as any)?.createModuleSpecifierCache;
+	const noopHost = {
+		watchNodeModulesForPackageJsonChanges: () => ({ close: () => { } }),
+		toPath
+	}
 	const AutoImportProviderProject = createAutoImportProviderProjectStatic(ts, host, createLanguageService);
 
 	const { projectService, compilerOptions, currentDirectory } = options;
@@ -61,7 +67,9 @@ export function createProject(
 			this.exportMapCache?.clear();
 		},
 
-		moduleSpecifierCache: (options.createModuleSpecifierCache ?? createModuleSpecifierCache)(),
+		moduleSpecifierCache: tsCreateModuleSpecifierCache 
+			? tsCreateModuleSpecifierCache(noopHost)
+			: (options.createModuleSpecifierCache ?? createModuleSpecifierCache)(),
 		getModuleSpecifierCache() {
 			return this.moduleSpecifierCache;
 		},
