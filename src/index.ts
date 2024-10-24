@@ -20,7 +20,9 @@ export function createLanguageService(
 	setPreferences?(preferences: ts.UserPreferences): void;
 	projectUpdated?(updatedProjectDirectory: string): void;
 } {
-	if (semver.gte(ts.version, '5.6.1')) {
+	// moduleSpecifierCache changes introduced in 5.6.1-rc 
+	// https://github.com/microsoft/TypeScript/pull/59604
+	if (semver.gte(ts.version, '5.6.1-rc')) {
 		return _56(ts, sys, host, createLanguageService);
 	}
 	if (semver.gte(ts.version, '5.5.1')) {
