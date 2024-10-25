@@ -8,7 +8,7 @@ import type {
 } from 'typescript/lib/tsserverlibrary';
 import type { ProjectPackageJsonInfo } from './packageJsonCache';
 import { ProjectService, PackageJsonAutoImportPreference } from './projectService';
-import { createModuleSpecifierCache } from './moduleSpecifierCache';
+import { createModuleSpecifierCache, ModuleSpecifierResolutionCacheHost } from './moduleSpecifierCache';
 import { createAutoImportProviderProjectStatic } from './autoImportProviderProject';
 import { SymlinkCache } from './symlinkCache';
 import { ExportInfoMap } from './exportInfoMap';
@@ -20,6 +20,13 @@ export interface ProjectOptions {
 	currentDirectory: string;
 	createModuleSpecifierCache?: typeof createModuleSpecifierCache;
 };
+
+interface ModuleSpecifierResolutionCacheHost5_5 extends ModuleSpecifierResolutionCacheHost {
+	/**
+	 * Added in TypeScript 5.5
+	 */
+	toPath(fileName: string): string;
+}
 
 export function createProject(
 	ts: typeof import('typescript/lib/tsserverlibrary'),
@@ -39,9 +46,11 @@ export function createProject(
 	} = ts as any;
 
 	const tsCreateModuleSpecifierCache = (ts.server as any)?.createModuleSpecifierCache;
-	const noopHost = {
+	const noopHost: ModuleSpecifierResolutionCacheHost5_5 = {
 		watchNodeModulesForPackageJsonChanges: () => ({ close: () => { } }),
-		toPath
+		toPath(fileName: string) {
+			return toPath(fileName, host.getCurrentDirectory(), projectService.toCanonicalFileName);
+		}
 	}
 	const AutoImportProviderProject = createAutoImportProviderProjectStatic(ts, host, createLanguageService);
 
