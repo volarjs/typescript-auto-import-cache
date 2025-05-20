@@ -162,6 +162,9 @@ export function createAutoImportProviderProjectStatic(
 					resolveJs,
 				);
 				if (entrypoints) {
+					// some packages have giant exports maps, don't add them to the project to not slow down the editor
+					if (entrypoints.length > 100) return;
+
 					const real = moduleResolutionHost.realpath?.(packageJson.packageDirectory);
 					const isSymlink = real && real !== packageJson.packageDirectory;
 					if (isSymlink) {
