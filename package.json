@@ -1,6 +1,6 @@
 {
 	"name": "typescript-auto-import-cache",
-	"version": "0.3.5",
+	"version": "0.3.6",
 	"main": "out/index.js",
 	"license": "MIT",
 	"files": [
